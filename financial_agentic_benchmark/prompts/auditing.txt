@@ -1,19 +1,2 @@
----
-Please audit the value of us-gaap:AdjustmentsRelatedToTaxWithholdingForShareBasedCompensation for the period 2023-01-01 to 2023-12-31 in the 10-K filing of rrr released on 2023-12-31.
-
-Target sample ID: mr_1
-
-Input folder (ONLY use this folder, do NOT scan other directories):
-/nfs/roberts/project/pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/data/auditing/XBRL/10k-rrr-20231231
-
-Output file:
-/home/lm2445/project_pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/results/auditing/mr_1.json
-
-Requirements:
-- Only process this single filing
-- Do NOT explore other directories
-- Identify the correct instance document inside this folder (e.g., *_htm.xml)
-- Extract the reported value
-- Compute the correct value using taxonomy and linkbases if needed
-- Output ONLY one JSON file for this sample
----
+Please audit the value of us-gaap:AdjustmentsRelatedToTaxWithholdingForShareBasedCompensation for 2023-01-01 to 2023-12-31 in the 10k filing released by rrr on 2023-12-31. What's the reported value? What's the actual value calculated from the relevant linkbases and US-GAAP taxonomy? (id: mr_1) The input data is at /home/lm2445/project_pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/data/auditing, please save the output to /home/lm2445/project_pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/results/auditing.
+Please audit the value of srt:StandardizedMeasureOfDiscountedFutureNetCashFlowRelatingToProvedOilAndGasReservesAccretionOfDiscount for 2020-10-01 to 2021-09-30 in the 10k filing released by brn on 2022-09-30. What's the reported value? What's the actual value calculated from the relevant linkbases and US-GAAP taxonomy? (id: mr_2) The input data is at /home/lm2445/project_pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/data/auditing, please save the output to /home/lm2445/project_pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/results/auditing.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage: ./run.sh 1 10
+# usage: ./run.sh 1 2
 
 INPUT="prompts/auditing.txt"
 START=$1
