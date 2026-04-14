@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "auditing": {
+      "command": "python",
+      "args": ["mcp/auditing_mcp_server.py"]
+    }
+  }
+}

@@ -22,6 +22,7 @@ awk 'BEGIN{RS="---"} NR>1' "$INPUT" | while IFS= read -r prompt; do
 $prompt" \
         --model gpt-5.3-codex \
         --skip-git-repo-check \
+        --config mcp/mcp_config.json \
         2>&1 | tee -a "$LOG"
 
     echo "[$count] completed" | tee -a "$LOG"

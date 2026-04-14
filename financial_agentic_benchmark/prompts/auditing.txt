@@ -1,0 +1,19 @@
+---
+Please audit the value of us-gaap:AdjustmentsRelatedToTaxWithholdingForShareBasedCompensation for the period 2023-01-01 to 2023-12-31 in the 10-K filing of rrr released on 2023-12-31.
+
+Target sample ID: mr_1
+
+Input folder (ONLY use this folder, do NOT scan other directories):
+/nfs/roberts/project/pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/data/auditing/XBRL/10k-rrr-20231231
+
+Output file:
+/home/lm2445/project_pi_sjf37/lm2445/FinAI_auditing_project/financial_agentic_benchmark/results/auditing/mr_1.json
+
+Requirements:
+- Only process this single filing
+- Do NOT explore other directories
+- Identify the correct instance document inside this folder (e.g., *_htm.xml)
+- Extract the reported value
+- Compute the correct value using taxonomy and linkbases if needed
+- Output ONLY one JSON file for this sample
+---
