@@ -1,10 +1,53 @@
 # XBRL Auditing MCP README
 
-This directory contains the benchmarking setup for XBRL auditing with a dedicated MCP server. The MCP server exposes a small set of auditing tools so the model does not need to parse XBRL files with ad hoc scripts. (Codex version is not available currently)
+This repository contains the benchmarking setup for XBRL auditing with a dedicated MCP server. The MCP server exposes a small set of auditing tools so the model does not need to parse XBRL files with ad hoc scripts.
+
+## Project tree
+
+The main project structure is:
+
+```text
+FinAI_auditing_project/
+├── README.md
+├── .claude/
+│   └── skills/
+│       ├── auditing/           <- new skills for the MCP tools
+│       ├── pair_trading/
+│       ├── report_evaluation/
+│       ├── report_generation/
+│       └── trading/
+├── .codex/
+│   └── skills/
+│       ├── auditing/            
+│       ├── pair_trading/        
+│       ├── report_evaluation/  
+│       ├── report_generation/   
+│       └── trading/             
+└── financial_agentic_benchmark/
+    ├── run_claude.sh
+    ├── run_codex.sh
+    ├── data/
+    ├── evaluation/
+    ├── logs/
+    ├── prompts/
+    ├── results/
+    └── mcp/
+        ├── mcp_config.json
+        └── xbrl_auditing/
+            ├── run_server.sh    <- MCP server launcher
+            └── server.py        <- MCP tool definitions
+```
+
+Highlights:
+
+- MCP tools are implemented in `financial_agentic_benchmark/mcp/xbrl_auditing/server.py`.
+- The MCP server wrapper is `financial_agentic_benchmark/mcp/xbrl_auditing/run_server.sh`.
+- The new Codex skills are under `.codex/skills/`.
+- The legacy Claude skills are under `.claude/skills/`.
 
 ## 1. The five MCP tools used in the audit workflow
 
-The operational audit flow uses these five MCP tools from the `xbrl-auditing` server. Their definitions are implemented in `mcp/xbrl_auditing/server.py`.
+The operational audit flow uses these five MCP tools from the `xbrl-auditing` server. Their definitions are implemented in `financial_agentic_benchmark/mcp/xbrl_auditing/server.py`.
 
 ### 1. `locate_filing`
 
@@ -201,21 +244,30 @@ Use in the workflow: this is the final tool call. It writes the benchmark artifa
 
 Note: the server also defines a small `ping` tool for connectivity checks, but the core audit workflow above is the five-tool path enforced by the runner.
 
-## 2. Auditing skill path under `.claude`
+## 2. Skill paths under `.claude` and `.codex`
 
-The current auditing skill file is:
-
-```text
-../.claude/skills/auditing/SKILL.md
-```
-
-From the parent project root, the same path is:
+The legacy Claude auditing skill file is:
 
 ```text
 .claude/skills/auditing/SKILL.md
 ```
 
-This is the updated Claude skill for the auditing task. It describes the single-filing audit workflow and instructs the model to use the `xbrl-auditing` MCP server instead of writing ad hoc XML/XSD parsing code.
+The new Codex auditing skill file is:
+
+```text
+.codex/skills/auditing/SKILL.md
+```
+
+Additional new Codex skills are:
+
+```text
+.codex/skills/pair_trading/SKILL.md
+.codex/skills/report_evaluation/SKILL.md
+.codex/skills/report_generation/SKILL.md
+.codex/skills/trading/SKILL.md
+```
+
+These skill files describe the task workflows and instruct the model to use the available MCP tools or local project artifacts instead of writing ad hoc parsing code.
 
 ### How the auditing skill uses the five tools
 
@@ -235,9 +287,9 @@ In short, the skill provides the decision logic, while the MCP tools provide the
 
 There are two configuration paths in this workspace.
 
-### Batch runs through `run_claude.sh`
+### Batch runs through `financial_agentic_benchmark/run_claude.sh`
 
-`run_claude.sh` passes Claude an MCP config file:
+`financial_agentic_benchmark/run_claude.sh` passes Claude an MCP config file:
 
 ```json
 {
@@ -253,20 +305,20 @@ There are two configuration paths in this workspace.
 That config lives at:
 
 ```text
-mcp/mcp_config.json
+financial_agentic_benchmark/mcp/mcp_config.json
 ```
 
 The wrapper script started by Claude is:
 
 ```text
-mcp/xbrl_auditing/run_server.sh
+financial_agentic_benchmark/mcp/xbrl_auditing/run_server.sh
 ```
 
 That wrapper:
 
 - sets `XBRL_AUDITING_MCP_ACTIVE=1`
 - sets `XBRL_AUDITING_MCP_LOG` for MCP debug tracing
-- launches `mcp/xbrl_auditing/server.py`
+- launches `financial_agentic_benchmark/mcp/xbrl_auditing/server.py`
 
 ### Local Claude Code settings
 
@@ -297,6 +349,7 @@ It defines the same MCP server as a stdio server using a direct Python command:
 Run the batch script with a start and end prompt index:
 
 ```bash
+cd financial_agentic_benchmark
 sh run_claude.sh 1 2
 ```
 
@@ -307,14 +360,14 @@ What the script does:
 3. Writes Claude stdout/stderr to `logs/auditing.log`
 4. Captures MCP tool-call traces in a temporary `.claude_mcp_*` log
 5. Appends that MCP trace into `logs/auditing.log`
-6. The codex version is not available now
+6. A separate Codex runner is available as `financial_agentic_benchmark/run_codex.sh`
 
 ### Audit evidence
 
 The main evidence file is:
 
 ```text
-logs/auditing.log
+financial_agentic_benchmark/logs/auditing.log
 ```
 
 This log contains:
@@ -325,30 +378,31 @@ This log contains:
 - completion or failure markers
 
 If you meant `audit.log`, the actual file name in this repo is `logs/auditing.log`.
+If you mean the repository-root path, that file is `financial_agentic_benchmark/logs/auditing.log`.
 
 ### Results path
 
 The audit result JSON files are written under:
 
 ```text
-results/auditing/
+financial_agentic_benchmark/results/auditing/
 ```
 
 Current examples:
 
 ```text
-results/auditing/claude-code_auditing_10k_rrr_20231231_mr_1_claude-sonnet-4-6.json
-results/auditing/claude-code_auditing_10k_brn_20220930_mr_2_claude-sonnet-4-6.json
+financial_agentic_benchmark/results/auditing/claude-code_auditing_10k_rrr_20231231_mr_1_claude-sonnet-4-6.json
+financial_agentic_benchmark/results/auditing/claude-code_auditing_10k_brn_20220930_mr_2_claude-sonnet-4-6.json
 ```
 
-The prompts in `prompts/auditing.txt` explicitly tell the agent to save output to `results/auditing`, and the auditing skill also instructs the model to write results there.
+The prompts in `financial_agentic_benchmark/prompts/auditing.txt` explicitly tell the agent to save output to `results/auditing`, and the auditing skill also instructs the model to write results there.
 
 ## 5. Where the MCP tools are defined
 
 The MCP tools are defined in:
 
 ```text
-mcp/xbrl_auditing/server.py
+financial_agentic_benchmark/mcp/xbrl_auditing/server.py
 ```
 
 They are registered with `FastMCP("xbrl-auditing")` and exposed through `@mcp.tool()` decorators. The relevant tool definitions in that file are:
@@ -362,12 +416,18 @@ They are registered with `FastMCP("xbrl-auditing")` and exposed through `@mcp.to
 
 ## File map
 
-- `run_claude.sh`: batch runner for Claude with MCP enabled
-- `mcp/mcp_config.json`: MCP server config used by `run_claude.sh`
-- `mcp/xbrl_auditing/run_server.sh`: MCP startup wrapper
-- `mcp/xbrl_auditing/server.py`: actual MCP server and tool definitions
+- `financial_agentic_benchmark/run_claude.sh`: batch runner for Claude with MCP enabled
+- `financial_agentic_benchmark/run_codex.sh`: batch runner for Codex
+- `financial_agentic_benchmark/mcp/mcp_config.json`: MCP server config used by `run_claude.sh`
+- `financial_agentic_benchmark/mcp/xbrl_auditing/run_server.sh`: MCP startup wrapper
+- `financial_agentic_benchmark/mcp/xbrl_auditing/server.py`: actual MCP server and tool definitions
 - `.claude/settings.local.json`: local Claude MCP configuration
-- `../.claude/skills/auditing/SKILL.md`: current auditing skill file
-- `prompts/auditing.txt`: batch prompt list
-- `logs/auditing.log`: execution and MCP evidence log
-- `results/auditing/`: final JSON audit outputs
+- `.claude/skills/auditing/SKILL.md`: Claude auditing skill
+- `.codex/skills/auditing/SKILL.md`: new Codex auditing skill
+- `.codex/skills/pair_trading/SKILL.md`: new Codex pair-trading skill
+- `.codex/skills/report_evaluation/SKILL.md`: new Codex report-evaluation skill
+- `.codex/skills/report_generation/SKILL.md`: new Codex report-generation skill
+- `.codex/skills/trading/SKILL.md`: new Codex trading skill
+- `financial_agentic_benchmark/prompts/auditing.txt`: batch prompt list
+- `financial_agentic_benchmark/logs/auditing.log`: execution and MCP evidence log
+- `financial_agentic_benchmark/results/auditing/`: final JSON audit outputs
