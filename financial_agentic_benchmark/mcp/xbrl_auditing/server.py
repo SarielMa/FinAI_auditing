@@ -1,9 +1,10 @@
 """
 XBRL Auditing MCP Server
 
-Provides five tools that the auditing agent calls instead of writing
+Provides six tools that the auditing agent calls instead of writing
 inline Python scripts:
 
+  0. ping               - minimal connectivity probe
   1. locate_filing       - find the XBRL folder + file paths
   2. extract_xbrl_facts  - parse *_htm.xml → facts + resolved periods
   3. get_calculation_network - parse *_cal.xml → parent/child roles
@@ -15,6 +16,7 @@ import glob
 import json
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("xbrl-auditing")
+MCP_RUNTIME_ENV = "XBRL_AUDITING_MCP_ACTIVE"
+MCP_LOG_ENV = "XBRL_AUDITING_MCP_LOG"
 
 # ---------------------------------------------------------------------------
 # Namespace helpers
@@ -64,6 +68,49 @@ def _concept_local_name(concept_id: str) -> str:
     return concept_id
 
 
+def _require_mcp_runtime() -> None:
+    """Prevent local imports from bypassing the MCP transport."""
+    if os.environ.get(MCP_RUNTIME_ENV) != "1":
+        raise RuntimeError(
+            "xbrl-auditing tools must run through the MCP server runtime."
+        )
+
+
+def _log_debug(message: str) -> None:
+    """Write MCP debug lines to an optional log file."""
+    log_path = os.environ.get(MCP_LOG_ENV)
+    if not log_path:
+        return
+    try:
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(message + "\n")
+    except OSError:
+        pass
+
+
+def _trace_tool_call(tool_name: str, **kwargs: Any) -> None:
+    """Emit a compact stderr trace when an MCP tool is invoked."""
+    parts = [f"{key}={value!r}" for key, value in kwargs.items()]
+    message = f"[xbrl-auditing MCP] {tool_name} called" + (f" ({', '.join(parts)})" if parts else "")
+    print(message, file=sys.stderr, flush=True)
+    _log_debug(message)
+
+
+# ---------------------------------------------------------------------------
+# Tool 0 — ping
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def ping() -> dict[str, bool | str]:
+    """Minimal MCP connectivity probe."""
+    _require_mcp_runtime()
+    _trace_tool_call("ping")
+    return {"ok": True, "server": "xbrl-auditing"}
+
+
 # ---------------------------------------------------------------------------
 # Tool 1 — locate_filing
 # ---------------------------------------------------------------------------
@@ -92,6 +139,15 @@ def locate_filing(data_dir: str, filing_type: str, ticker: str, issue_date: str)
         }
         or {"error": "<message>"} if not found.
     """
+    _require_mcp_runtime()
+    _trace_tool_call(
+        "locate_filing",
+        data_dir=data_dir,
+        filing_type=filing_type,
+        ticker=ticker,
+        issue_date=issue_date,
+    )
+
     # Normalise inputs
     filing_type = filing_type.lower().replace("-", "")   # '10k' or '10q'
     ticker      = ticker.lower()
@@ -198,6 +254,13 @@ def extract_xbrl_facts(instance_doc_path: str, concept_local_name: str) -> list[
         Empty list if the concept is not found.
         {"error": "..."} dict in the list on parse failure.
     """
+    _require_mcp_runtime()
+    _trace_tool_call(
+        "extract_xbrl_facts",
+        instance_doc_path=instance_doc_path,
+        concept_local_name=concept_local_name,
+    )
+
     try:
         tree = ET.parse(instance_doc_path)
     except Exception as e:
@@ -306,6 +369,13 @@ def get_calculation_network(cal_xml_path: str, concept_id: str) -> dict[str, Any
           ]
         }
     """
+    _require_mcp_runtime()
+    _trace_tool_call(
+        "get_calculation_network",
+        cal_xml_path=cal_xml_path,
+        concept_id=concept_id,
+    )
+
     # Normalise to colon form for comparison
     target = _norm_concept(concept_id)
     target_local = _concept_local_name(target)
@@ -411,6 +481,14 @@ def get_balance_type(xsd_path: str, taxonomy_dir: str, concept_id: str) -> dict[
     Returns:
         {"balance": "debit" | "credit" | "none", "source": "xsd" | "taxonomy" | "not_found"}
     """
+    _require_mcp_runtime()
+    _trace_tool_call(
+        "get_balance_type",
+        xsd_path=xsd_path,
+        taxonomy_dir=taxonomy_dir,
+        concept_id=concept_id,
+    )
+
     target = _norm_concept(concept_id)
     target_local = _concept_local_name(target)
 
@@ -476,6 +554,15 @@ def write_audit_result(
         {"status": "ok", "path": "<absolute path written>"}
         or {"status": "error", "message": "..."}
     """
+    _require_mcp_runtime()
+    _trace_tool_call(
+        "write_audit_result",
+        output_dir=output_dir,
+        filename=filename,
+        extracted_value=extracted_value,
+        calculated_value=calculated_value,
+    )
+
     os.makedirs(output_dir, exist_ok=True)
 
     if not filename.endswith(".json"):
@@ -502,4 +589,5 @@ def write_audit_result(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    _log_debug("[xbrl-auditing MCP] server starting")
     mcp.run()
