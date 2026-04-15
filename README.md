@@ -1,6 +1,6 @@
 # XBRL Auditing MCP README
 
-This directory contains the Claude/Codex benchmarking setup for XBRL auditing with a dedicated MCP server. The MCP server exposes a small set of auditing tools so the model does not need to parse XBRL files with ad hoc scripts.
+This directory contains the benchmarking setup for XBRL auditing with a dedicated MCP server. The MCP server exposes a small set of auditing tools so the model does not need to parse XBRL files with ad hoc scripts. (Codex version is not available currently)
 
 ## 1. The five MCP tools used in the audit workflow
 
