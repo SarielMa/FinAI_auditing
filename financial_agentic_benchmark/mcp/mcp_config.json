@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "xbrl-auditing": {
+      "command": "bash",
+      "args": ["mcp/xbrl_auditing/run_server.sh"]
+    }
+  }
+}
