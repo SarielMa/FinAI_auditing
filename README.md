@@ -240,13 +240,7 @@ Note: the server also defines a small `ping` tool for connectivity checks, but t
 
 ## 2. Skill paths under `.claude` 
 
-The legacy Claude auditing skill file is:
-
-```text
-.claude/skills/auditing/SKILL.md
-```
-
-The auditing skill file is:
+The updated auditing skill file is:
 
 ```text
 .claude/skills/auditing/SKILL.md
