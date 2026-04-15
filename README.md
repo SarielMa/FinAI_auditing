@@ -42,8 +42,7 @@ Highlights:
 
 - MCP tools are implemented in `financial_agentic_benchmark/mcp/xbrl_auditing/server.py`.
 - The MCP server wrapper is `financial_agentic_benchmark/mcp/xbrl_auditing/run_server.sh`.
-- The new Codex skills are under `.codex/skills/`.
-- The legacy Claude skills are under `.claude/skills/`.
+- The updated skills are under `.claude/skills/`.
 
 ## 1. The five MCP tools used in the audit workflow
 
