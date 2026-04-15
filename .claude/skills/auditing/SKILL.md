@@ -62,41 +62,6 @@ The input data is at /data/auditing, please save the output to /results/auditing
 | `id`          | `mr_1`                     | the value from `(id: ...)` in the user's request; used verbatim in the output filename |
 | `model`       | `claude-sonnet-4-6`        | your model identifier from system context; sanitize for filename use |
 
-### Locate the filing folder
-
-```
-data/auditing/XBRL/{filing_name}-{ticker}-{issue_time}/
-```
-
-Example: `data/auditing/XBRL/10k-zions-20231231/`
-
-Within that folder, you need these files:
-
-| File pattern  | Purpose |
-|---------------|---------|
-| `*_htm.xml`   | Instance document — all reported facts and contexts **(primary)** |
-| `*_cal.xml`   | Calculation linkbase — summation-item relationships + locators **(primary)** |
-| `*.xsd`       | Extension schema — concept definitions, use if extension names are unclear |
-| `*_def.xml`   | Definition linkbase — dimensional relationships, use if needed |
-| `*_lab.xml`   | Label linkbase — human-readable concept labels, use if needed |
-| `*_pre.xml`   | Presentation linkbase — statement structure, use if needed |
-| `*.htm`       | **Ignore** — human-readable HTML, never used |
-
-### Locate the taxonomy folder
-
-```
-data/auditing/US_GAAP_Taxonomy/gaap_chunks_{year}/
-```
-
-Where `{year}` matches the filing year derived from `issue_time` (e.g., `20231231` → `2023`).
-Each taxonomy folder contains:
-- `chunks_core.jsonl` — concept labels and types (one JSON object per line)
-- `chunks_relations.jsonl` — taxonomy-level relationships
-- `meta.json` — taxonomy metadata
-
-Use taxonomy files only to clarify concept semantics and sanity-check results —
-never to replace filing-specific calculation networks.
-
 ### Ensure the output directory exists
 
 ```
@@ -109,25 +74,45 @@ Create it if it doesn't exist yet.
 
 ## The audit workflow
 
-Work through this checklist in order. Never skip steps or reorder them.
+Work through this checklist in order. **Use the MCP tools from the `xbrl-auditing` server at each step — do not write Python scripts.**
+
+### Step 0 — Locate the filing
+
+Call **`locate_filing`** first. This resolves the natural-language filing reference
+into concrete file paths used by all downstream tools.
+
+```
+locate_filing(
+  data_dir   = <user-provided data path>,   # e.g. "/data/auditing"
+  filing_type = "10k" | "10q",
+  ticker      = <ticker, lowercase>,
+  issue_date  = <issue_time>                # "YYYYMMDD" or "YYYY-MM-DD"
+)
+```
+
+Returns: `folder`, `instance_doc`, `cal_xml`, `xsd`, `def_xml`, `lab_xml`, `pre_xml`, `taxonomy_dir`.
+
+Use these paths in all subsequent tool calls. If the tool returns an `"error"` key,
+stop and report the error — do not guess file paths manually.
+
+---
 
 ### Step 1 — Extract reported facts for the target concept
 
-Open `*_htm.xml`. Find all elements whose local name matches the concept from
-`concept_id` (strip the `us-gaap:` prefix — e.g., `us-gaap:AssetsCurrent` →
-look for elements named `AssetsCurrent`). For each matching element:
+Call **`extract_xbrl_facts`** with the `instance_doc` path and the **local name**
+of the concept (strip the namespace prefix: `us-gaap:AssetsCurrent` → `AssetsCurrent`).
 
-- Note its numeric value
-- Note its `contextRef` attribute
-- Follow `contextRef` to the matching `<context id="...">` element in the same file
-- Read the period from that context:
-  - `<instant>` → instant date
-  - `<startDate>` + `<endDate>` → duration range
-- Keep only facts whose resolved context period matches the user's requested period exactly
+```
+extract_xbrl_facts(
+  instance_doc_path  = <instance_doc from Step 0>,
+  concept_local_name = <local name only, no prefix>
+)
+```
 
-**Do not determine the period type first and then search.** Always resolve
-`fact → contextRef → context id → period` before filtering.
+Each returned fact contains: `value`, `context_id`, `period_type`, `start_date`,
+`end_date`, `instant_date`, `dimensions`.
 
+Keep only facts whose resolved period matches the user's requested period exactly.
 Do not silently switch between:
 - instant and duration
 - quarter-only and year-to-date
@@ -139,66 +124,57 @@ Do not silently switch between:
 Rank candidates by these preferences (highest first):
 
 1. Exact concept match
-2. Exact period match (after resolving contextRef)
+2. Exact period match
 3. No dimensions before dimensional facts
 4. Numeric facts before non-numeric facts
 
-Use the top-ranked fact as `extracted_value` unless the user explicitly asks for a
-segmented or dimensional fact. If multiple candidates remain equally plausible, report
-the ambiguity rather than forcing a single answer.
+Use the top-ranked fact as `extracted_value`. If multiple candidates remain equally
+plausible, report the ambiguity rather than forcing a single answer.
 
-### Step 3 — Build the calculation network from `*_cal.xml`
+### Step 3 — Build the calculation network
 
-The calculation linkbase has two parts you must read together:
+Call **`get_calculation_network`** with the `cal_xml` path and the full `concept_id`
+(with namespace prefix).
 
-**Part A — Locators** (`<link:loc>` elements):
-Each locator maps a label string to a concept name via its `xlink:href`:
-```xml
-<link:loc xlink:label="loc_us-gaap_Liabilities_UUID"
-          xlink:href="https://...#us-gaap_Liabilities"/>
 ```
-The concept name is the fragment after `#` (e.g., `us-gaap_Liabilities`).
-Build a lookup table: `label → concept_name`.
-
-> **Normalization:** href fragments use underscores (`us-gaap_Liabilities`) while
-> `concept_id` in the request uses a colon (`us-gaap:Liabilities`). Treat them as
-> equivalent — normalize by replacing `:` with `_` (or vice versa) before matching.
-
-**Part B — Arcs** (`<link:calculationArc>` elements):
-```xml
-<link:calculationArc xlink:from="loc_us-gaap_Liabilities_UUID"
-                     xlink:to="loc_us-gaap_Deposits_UUID"
-                     weight="1.0" .../>
+get_calculation_network(
+  cal_xml_path = <cal_xml from Step 0>,
+  concept_id   = <full concept_id, e.g. "us-gaap:AssetsCurrent">
+)
 ```
-**Arc direction: `xlink:from` = PARENT (the sum), `xlink:to` = CHILD (a component).**
 
-Using your locator lookup table, resolve `xlink:from` and `xlink:to` labels to
-actual concept names. Then determine the target concept's role in the network:
+Returns: `role` (`"parent"` / `"child"` / `"both"` / `"none"`), `as_parent` (children
+with weights per role), `as_child` (parent + siblings with weights per role).
 
-- **As a parent (Case A):** find arcs where the resolved `from` concept matches the target `concept_id`. Those arcs' `to` concepts (with their `weight`) are the calculation children. Note the calculation role (`xlink:role` on the enclosing `<link:calculationLink>`). If multiple roles contain the concept as a parent, prefer the role whose child coverage best matches the available facts.
+Use this to determine which Case applies in Step 4.
 
-- **As a child (Case C):** find arcs where the resolved `to` concept matches the target `concept_id`. Note the parent concept (`from`) and all sibling `to` concepts with their weights in the same role — these are needed for the algebraic derivation in Step 4.
+### Step 4 — Get the balance type
 
-- **Neither:** the concept has no calculation relationships; Case D applies.
+Call **`get_balance_type`** with the `xsd` and `taxonomy_dir` paths.
 
-### Step 4 — Determine the correct (calculated) value
+```
+get_balance_type(
+  xsd_path     = <xsd from Step 0>,
+  taxonomy_dir = <taxonomy_dir from Step 0>,
+  concept_id   = <full concept_id>
+)
+```
 
-First, check the concept's **balance type** from `*.xsd` (attribute `balance="debit"` or
-`balance="credit"`) or from `chunks_core.jsonl` in the taxonomy. This tells you the
-concept's directional nature and governs which case applies below.
+Returns: `balance` (`"debit"` / `"credit"` / `"none"`), `source`.
 
-Cases are **not mutually exclusive** — a concept can match more than one. Apply every case that matches and combine the results: Case A gives the numeric value, Case B enforces the sign. If both A and B apply, `calculated_value` = `abs(sum of weighted children)`.
+### Step 5 — Determine the correct (calculated) value
+
+Cases are **not mutually exclusive** — apply every case that matches.
 
 ---
 
-**Case A — Summation parent** (the target concept appears as `xlink:from` in `*_cal.xml`)
+**Case A — Summation parent** (`role` is `"parent"` or `"both"`)
 
-Recompute by summing weighted children:
-1. Find each child fact in `*_htm.xml` (strip `us-gaap:` prefix to match element names)
-2. Resolve its `contextRef` to a context
-3. Keep it only if the context period matches the chosen parent fact's period exactly
-4. Prefer the same dimension signature as the chosen parent fact
-5. Multiply the child fact value by its arc `weight` and sum all contributions
+Recompute by summing weighted children from `as_parent`:
+1. For each child concept, call `extract_xbrl_facts` to find its value
+2. Keep only facts matching the chosen parent's period exactly
+3. Prefer the same dimension signature as the chosen parent fact
+4. Multiply each child value by its `weight` and sum all contributions
 
 → `calculated_value` = sum of `weight × child_value` for all matched children.
 
@@ -207,32 +183,32 @@ report the sum of available children but note it is partial.
 
 ---
 
-**Case B — Directional concept** (expenditure, loss, deduction, contra-asset, or any
-concept that represents an outflow or reduction — typically `balance="debit"` for
-expense/loss items, or `balance="credit"` for contra-asset/contra-equity items)
+**Case B — Directional concept** (`balance` is `"debit"` and concept represents an
+outflow/reduction, **or** `balance` is `"credit"` and concept represents a
+contra-asset/contra-equity)
 
 In XBRL, directional concepts must always be filed as **positive absolute values**.
-The sign is implied by the concept's semantics; a negative sign in the instance
-document is a filing error.
 
 - If `extracted_value` is negative → `calculated_value` = `abs(extracted_value)`
-- If `extracted_value` is already positive → `calculated_value` = same value (correctly reported)
+- If `extracted_value` is already positive → `calculated_value` = same value
 
-When the concept is also a summation parent (Cases A and B both apply), first recompute the sum from children (Case A), then apply the sign rule: `calculated_value` = `abs(recomputed sum)`.
+When Cases A and B both apply: first recompute the sum (Case A), then apply
+the sign rule: `calculated_value` = `abs(recomputed sum)`.
 
 ---
 
-**Case C — Calculation child only** (the target concept appears as `xlink:to` but
-never as `xlink:from` in `*_cal.xml`)
+**Case C — Calculation child only** (`role` is `"child"` only)
 
-Derive algebraically from the parent relationship:
+Derive algebraically using sibling values from `as_child`:
 `calculated_value` = `(parent_value - sum(sibling_weight × sibling_value)) / own_weight`
 
-Use exact weights and matching contexts for all sibling and parent facts.
+Call `extract_xbrl_facts` as needed to get parent and sibling values.
+Use exact weights and matching contexts for all facts.
 
 ---
 
 **Case D — No calculation relationships and neutral balance type**
+(`role` is `"none"` and `balance` is `"none"`)
 
 No recomputation is possible and no sign correction is required.
 → `calculated_value` = `extracted_value` (report as found).
@@ -257,64 +233,45 @@ but the output file must still contain exactly one JSON line.
 
 ## Output format
 
-Write a single `.json` file to:
+Call **`write_audit_result`** to write the final output:
 
 ```
-results/auditing/{agent_name}_auditing_{filing_name}_{ticker}_{issue_time}_{id}_{model}.json
+write_audit_result(
+  output_dir       = <user-provided output path>,   # e.g. "/results/auditing"
+  filename         = "{agent_name}_auditing_{filing_name}_{ticker}_{issue_time}_{id}_{model}",
+  extracted_value  = "<value string>",
+  calculated_value = "<value string>"
+)
 ```
 
-Example: `results/auditing/claude-code_auditing_10k_zions_20231231_mr_1_claude-sonnet-4-6.json`
+Example filename: `claude-code_auditing_10k_rrr_20231231_mr_1_claude-sonnet-4-6`
 
-The file must contain **exactly one line**: the final JSON object.
-
+The tool writes exactly one line:
 ```json
 {"extracted_value": "-1234567000", "calculated_value": "1234567000"}
 ```
-
-*(Example: a loss concept was filed as negative — the correct value is the positive absolute.)*
 
 **Field rules:**
 
 | Field | Rule |
 |-------|------|
 | `extracted_value` | Numeric string **exactly as it appears** in the instance document (may be negative); `"0"` if not found |
-| `calculated_value` | Numeric string of the **correct expected value** per Step 4 (Case A/B/C/D); `"0"` if not determinable |
+| `calculated_value` | Numeric string of the **correct expected value** per Step 5 (Case A/B/C/D); `"0"` if not determinable |
 
-- Output JSON only on that line. No explanation, no Markdown fences, no extra keys.
 - Preserve numeric values exactly as strings (do not reformat or round).
-- Write the file once, after completing both steps. Do not append or overwrite.
+- Do not call `write_audit_result` more than once per audit run.
 
 ---
 
 ## What NOT to do
 
+- Do not write inline Python scripts or use the Bash tool for XBRL parsing — use the MCP tools
 - Do not replace filing-specific calculation networks with taxonomy-only relationships
   unless the filing network is absent (and state that fallback explicitly)
 - Do not silently switch period types (instant vs. duration, quarter vs. YTD)
-- Do not use `.htm` files — each filing folder contains six XBRL files (`*_htm.xml`, `*_cal.xml`, `*_def.xml`, `*_lab.xml`, `*_pre.xml`, `*.xsd`); the primary ones are `*_htm.xml` and `*_cal.xml`, but the others may be consulted if needed
+- Do not use `.htm` files — always work with the XML files returned by `locate_filing`
 - Do not confuse arc direction: `xlink:from` = parent (sum), `xlink:to` = child (component)
 - Do not report a negative `calculated_value` for directional concepts (expenditures, losses, deductions) — these must always be positive absolute values in valid XBRL
-- Do not use locator label strings as concept names — always resolve via `<link:loc xlink:href>`
 - Do not create temporary scripts, debug logs, or intermediate files
 - Do not write multiple output files for the same audit run
 - Do not add any text outside the JSON on the output line
-
----
-
-## Implementation approach
-
-The cleanest approach: write a short inline Python script via the Bash tool that
-parses the XML files, resolves all locators and contexts, applies the correct Case
-(A/B/C/D), and writes the final JSON. Keep all computation in memory. Do not save
-the script to disk.
-
-Recommended libraries: `xml.etree.ElementTree` for XML parsing, `json` for output,
-`re` or string operations for concept name normalization. No third-party packages
-needed.
-
-Suggested script structure:
-1. Parse `*_htm.xml` → build `{concept_name: [(value, period, dimensions)]}` lookup
-2. Parse `*.xsd` or search `chunks_core.jsonl` → get balance type of target concept
-3. Parse `*_cal.xml` → build locator table, then identify the concept as parent / child / neither
-4. Apply Case A/B/C/D to compute `calculated_value`
-5. Print `{"extracted_value": "...", "calculated_value": "..."}` and write to output file

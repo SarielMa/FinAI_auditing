@@ -1,6 +1,8 @@
 #!/bin/bash
 # usage: ./run_claude_single.sh 1 2
 
+set -o pipefail
+
 INPUT="prompts/auditing.txt"
 START=$1
 END=$2
@@ -19,7 +21,13 @@ awk 'BEGIN{RS="---"} NR>1' "$INPUT" | while IFS= read -r prompt; do
         --dangerously-skip-permissions \
         --no-session-persistence \
         --model claude-sonnet-4-6 \
-        "$prompt" | tee -a "$LOG"
+        "$prompt" 2>&1 | tee -a "$LOG"
 
-    echo "[$count] completed" | tee -a "$LOG"
+    status=${PIPESTATUS[0]}
+    if [[ $status -eq 0 ]]; then
+        echo "[$count] completed" | tee -a "$LOG"
+    else
+        echo "[$count] failed with exit code $status" | tee -a "$LOG"
+        exit "$status"
+    fi
 done

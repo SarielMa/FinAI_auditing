@@ -303,18 +303,23 @@ The file must contain **exactly one line**: the final JSON object.
 
 ## Implementation approach
 
-The cleanest approach: write a short inline Python script via the Bash tool that
-parses the XML files, resolves all locators and contexts, applies the correct Case
-(A/B/C/D), and writes the final JSON. Keep all computation in memory. Do not save
-the script to disk.
+Preferred workflow: use the `xbrl-auditing` MCP server when it is available.
+Those tools exist specifically to keep the audit task structured and to avoid
+large, ad hoc file parsing in the agent context.
 
-Recommended libraries: `xml.etree.ElementTree` for XML parsing, `json` for output,
-`re` or string operations for concept name normalization. No third-party packages
-needed.
+Use the MCP tools in this order:
+1. `locate_filing(data_dir, filing_type, ticker, issue_date)` to resolve the filing folder and primary file paths
+2. `extract_xbrl_facts(instance_doc_path, concept_local_name)` to get reported facts and resolved contexts
+3. `get_calculation_network(cal_xml_path, concept_id)` to determine whether the concept is a parent, child, both, or neither
+4. `get_balance_type(xsd_path, taxonomy_dir, concept_id)` to determine the balance type
+5. `write_audit_result(output_dir, filename, extracted_value, calculated_value)` to write the final one-line JSON output
 
-Suggested script structure:
-1. Parse `*_htm.xml` → build `{concept_name: [(value, period, dimensions)]}` lookup
-2. Parse `*.xsd` or search `chunks_core.jsonl` → get balance type of target concept
-3. Parse `*_cal.xml` → build locator table, then identify the concept as parent / child / neither
-4. Apply Case A/B/C/D to compute `calculated_value`
-5. Print `{"extracted_value": "...", "calculated_value": "..."}` and write to output file
+Important:
+- Prefer the MCP tools over writing inline Python or shell parsing
+- Keep the reasoning compact and operate on the tool outputs rather than re-reading entire XML files when possible
+- Call `write_audit_result` exactly once after the final values are known
+
+Fallback only if MCP is unavailable:
+- Use a short in-memory Python snippet to parse the required XML/XSD/JSONL files directly
+- Do not save the fallback script to disk
+- Follow the same A/B/C/D logic and output rules above

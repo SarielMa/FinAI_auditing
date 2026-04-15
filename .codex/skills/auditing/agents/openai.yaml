@@ -1,0 +1,13 @@
+interface:
+  display_name: "XBRL Auditing"
+  short_description: "Audit SEC-style XBRL facts with MCP-guided workflows"
+  default_prompt: "Use $auditing to audit an XBRL fact from a filing and prefer the xbrl-auditing MCP tools when available."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "xbrl-auditing"
+      description: "Structured XBRL auditing tools for filing discovery, fact extraction, calculation networks, balance types, and result writing"
+
+policy:
+  allow_implicit_invocation: true
